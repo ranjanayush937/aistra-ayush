@@ -2,7 +2,7 @@
 
 **Project:** Data Engineering Assessment for Kestrel Provisions Pvt Ltd  
 **Catalog:** `aistra_ayush`  
-**Data Coverage:** January 2025 — September 2025 (9 months)  
+**Data Coverage:** January 2025 — June 2026 (18 months)  
 **Total Raw Records:** 10.2M across 4 operational feeds
 
 ---
@@ -114,7 +114,7 @@ The pipeline follows a **Bronze → Silver → Gold** medallion architecture opt
 │  aistra_data/Business_KPI_Queries.ipynb                        │
 │                                                                 │
 │  • 12 business-ready SQL queries                               │
-│  • Pre-filtered for data coverage (Jan-Sep 2025)               │
+│  • Pre-filtered for data coverage (Jan 2025 - Jun 2026)               │
 │  • Dashboard-ready outputs                                     │
 │  • No joins required (Gold tables are pre-aggregated)          │
 └─────────────────────────────────────────────────────────────────┘
@@ -309,7 +309,7 @@ Provides **business-facing SQL queries** for Finance, Supply Chain, and Commerci
 
 ### Features
 - **12 ready-to-run queries** (one per KPI category)
-- **Pre-filtered** for available data coverage (Jan 1 - Sep 30, 2025)
+- **Pre-filtered** for available data coverage (Jan 1, 2025 - Jun 30, 2026)
 - **No joins required** — Gold tables are pre-aggregated
 - **Dashboard-ready** — results include proper labels, units, and date filters
 - **Parameterizable** — easily modify date ranges or dimension filters
@@ -323,7 +323,7 @@ SELECT
   metric_value as gross_sales_usd,
   source_row_count as transaction_lines
 FROM aistra_ayush.gold.kpi_001_gross_sales
-WHERE period_start BETWEEN '2025-01-01' AND '2025-09-30'
+WHERE period_start BETWEEN '2025-01-01' AND '2026-06-30'
 ORDER BY period_start;
 ```
 
@@ -334,7 +334,7 @@ SELECT
   dimension_channel as channel,
   SUM(metric_value) as total_sales_usd
 FROM aistra_ayush.gold.kpi_002_sales_by_channel
-WHERE period_start BETWEEN '2025-01-01' AND '2025-09-30'
+WHERE period_start BETWEEN '2025-01-01' AND '2026-06-30'
 GROUP BY month, channel
 ORDER BY month, channel;
 ```
@@ -348,7 +348,7 @@ SELECT
   total_readings,
   excursions
 FROM aistra_ayush.gold.kpi_006_temp_excursion_by_carrier
-WHERE period_start BETWEEN '2025-01-01' AND '2025-09-30'
+WHERE period_start BETWEEN '2025-01-01' AND '2026-06-30'
 ORDER BY month, excursion_rate_pct DESC;
 ```
 
@@ -595,4 +595,4 @@ For questions about:
 
 **Last Updated:** 2026-08-26  
 **Pipeline Version:** 1.0  
-**Data Coverage:** 2025-01-01 to 2025-09-30
+**Data Coverage:** 2025-01-01 to 2026-06-30
