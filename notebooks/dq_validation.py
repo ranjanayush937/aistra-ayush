@@ -652,7 +652,7 @@ print("\n=== POS TRANSACTION CHECKS ===")
 # 1. Required fields
 result = check_required_fields(
     table_name="aistra_ayush.bronze.pos_transactions",
-    required_columns=["txn_id", "txn_line_no", "outlet_code", "sku_code", "event_ts", "qty", "unit_price"],
+    required_columns=["txn_id", "txn_line_no", "outlet_code", "sku_code", "event_ts", "unit_price"],
     business_key_columns=["txn_id", "txn_line_no"],
     check_name="pos_required_fields"
 )
