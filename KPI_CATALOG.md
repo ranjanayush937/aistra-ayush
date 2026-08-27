@@ -1,8 +1,8 @@
 # KPI Catalog
 
 **Business:** Kestrel Provisions Pvt Ltd  
-**Purpose:** Single, documented metric layer for Finance and Supply Chain  
-**Scope:** Assessment implementation only — intentionally limited to metrics that are directly supported by the supplied feeds/reference data and explicitly called for in the brief.
+**Purpose:** Authoritative documentation for the KPI layer actually implemented in `gold.py`  
+**Scope:** Assessment implementation only — documents the KPIs and calculations currently materialized in the Gold layer, including known implementation gaps and limitations.
 
 ## 1. KPI Design Principles
 
@@ -20,18 +20,18 @@
 
 | KPI ID | KPI Name | Category | Business Definition | Grain | Filters / Exclusions | Source Feeds | Owner | Known Limitations |
 |---|---|---|---|---|---|---|---|---|
-| KPI-001 | Gross Sales | Finance / Sales | Sum of eligible POS line sales value for the selected business period after transaction-level deduplication. | Transaction line / day / outlet / channel | Exclude invalid or duplicate transaction lines; use business transaction date; do not use ingest date for period attribution. | POS transactions; fiscal calendar; outlet master | Finance | POS represents partner sales, not necessarily total ERP order value. Returns/adjustments depend on source representation. |
-| KPI-002 | Gross Sales by Channel | Finance / Sales | Gross Sales grouped by the outlet channel applicable on the transaction date. | Day / fiscal period / channel | Same exclusions as Gross Sales; resolve channel historically using effective-dated outlet master. | POS transactions; ERP outlet master; fiscal calendar | Finance | Channel history is dependent on correctness/completeness of ERP CDC history. |
-| KPI-003 | Units Sold (Eaches) | Sales / Volume | Total quantity sold converted to eaches using the approved UOM conversion rules. | Transaction line / day / SKU / outlet | Exclude invalid/duplicate transaction lines; convert only with valid UOM mapping; unresolved conversions remain explicitly unconverted/flagged. | POS transactions; UOM reference | Sales Operations | Accuracy depends on UOM master coverage and the source quantity/UOM fields. |
-| KPI-004 | Finance Report Variance | Finance / Reconciliation | Difference between the governed Gross Sales KPI and the published legacy Finance weekly report for the same reporting period. | Fiscal week | Compare only overlapping periods; do not alter governed sales to force agreement with the legacy report. | Governed POS KPI; legacy Finance weekly report; fiscal calendar | Finance / Data | Legacy report may contain double counting or incorrect date attribution, as stated in the brief. Variance is diagnostic, not a correction. |
-| KPI-005 | Temperature Excursion Rate | Supply Chain / Cold Chain | Percentage of eligible reefer trips for which recorded telemetry breaches the applicable temperature threshold. | Trip / month / carrier | Eligible chilled/frozen trips only; exclude trips with insufficient telemetry from the denominator and report them separately as data-quality exceptions. | Reefer telemetry; carrier master; relevant trip/product classification | Supply Chain Operations | Threshold interpretation depends on the supplied telemetry/contract rules. Device-vendor differences may affect coverage and sampling. |
-| KPI-006 | Temperature Excursion Rate by Carrier | Supply Chain / Cold Chain | Temperature Excursion Rate segmented by carrier to identify carrier-level cold-chain performance. | Month / carrier | Same eligibility and telemetry coverage rules as KPI-005. | Reefer telemetry; carrier master | Supply Chain Operations | Carrier attribution must be complete; missing/ambiguous carrier mappings reduce comparability. |
-| KPI-007 | Median Dock-to-Dispatch Cycle Time | Supply Chain / Warehouse | Median elapsed time between the warehouse dock/receipt handling event and dispatch event for completed warehouse movements. | Warehouse / day or fiscal period | Include movements with valid start and end timestamps; exclude incomplete event sequences and negative durations. | WMS scan events; warehouse master | Supply Chain Operations | Requires a valid event sequence and timestamps. Incomplete scans are excluded rather than imputed. |
+| KPI-001 | Gross Sales | Finance / Sales | Daily sum of `line_sales_value_pretax` from POS transactions. | Day | Excludes NULL sales values. | `silver.transactions` | Finance | Current SQL does not deduplicate transaction keys before aggregation. |
+| KPI-002 | Gross Sales by Channel | Finance / Sales | Daily POS sales grouped by outlet channel effective on the transaction business date. | Day / Channel | Point-in-time SCD2 join; excludes NULL sales values. | `silver.transactions` + `silver.outlets` | Finance | Inner join excludes transactions without a valid historical outlet match. |
+| KPI-003 | Units Sold (Eaches) | Sales / Volume | Daily `SUM(qty)` by SKU, reported as EACHES under the current source-data assumption that `qty` is already in eaches. | Day / SKU | Inner join to product master. No UOM conversion is performed in current SQL. | `silver.transactions` + `silver.products` | Sales Operations | `case_pack` is not used; transaction UOM is unavailable in the current implementation. |
+| KPI-004 | Finance Report Variance | Finance / Reconciliation | Variance between governed Gross Sales and the legacy Finance weekly report. | Fiscal week | Requires legacy Finance report data. | Governed POS KPI + legacy Finance report | Finance / Data | **Not implemented in `gold.py`.** |
+| KPI-005 | Temperature Excursion Rate | Supply Chain / Cold Chain | Percentage of valid reefer telemetry readings above 8°C. | Month | Excludes `is_missing_temp = TRUE`. | `silver.reefer_telemetry` | Supply Chain Operations | Reading-level, not trip-level. Current SQL does not count <2°C as an excursion and does not deduplicate telemetry. |
+| KPI-006 | Temperature Excursion Rate by Carrier | Supply Chain / Cold Chain | Percentage of valid telemetry readings above 8°C, grouped by `telemetry_vendor`. | Month / Vendor | Excludes missing temperature and NULL vendor. | `silver.reefer_telemetry` | Supply Chain Operations | `telemetry_vendor` is used as a proxy for carrier; confirm equivalence before labeling it Carrier. |
+| KPI-007 | Median Dock-to-Dispatch Cycle Time | Supply Chain / Warehouse | Median elapsed hours from the first RECEIVE event to the last DISPATCH event per order/warehouse. | Month / Warehouse | Requires both events; excludes negative durations. | `silver.wms_events` | Supply Chain Operations | Current SQL uses whole-hour `TIMESTAMPDIFF` and first-RECEIVE/last-DISPATCH pairing. |
 | KPI-008 | Outlet Channel Change Count | Master Data / Commercial | Number of outlets whose channel classification changed during the selected period, based on effective-dated outlet master history. | Outlet / change date / old channel / new channel | Count distinct effective changes; ignore unchanged CDC records. | ERP outlet master CDC; fiscal calendar | Commercial / Master Data | Requires reliable CDC sequencing and effective timestamps. Multiple changes within a period are counted as separate changes. |
-| KPI-009 | Order Value by Source System | Order / Finance | Sum of order-header value by source system using the ERP order header business definition, without combining incompatible sources. | Order / source system / period | Exclude duplicate order headers; retain source-system identity; only compare systems where value definitions and currencies/units are compatible. | ERP sales order header CDC | Finance / Order Management | The three source systems may not be economically comparable; the catalog preserves source identity rather than assuming equivalence. |
-| KPI-010 | Feed Data Completeness | Data Quality / Operations | Number and percentage of expected feed business dates/partitions that contain received data for the selected period. | Feed / business date | Compare observed dates against expected dates from the manifest/reference calendar; missing partitions are exceptions, not zero-valued business metrics. | Manifest; raw feed metadata; fiscal calendar | Data Engineering | Completeness indicates presence, not correctness of row content. A populated but corrupt partition can still appear complete. |
-| KPI-011 | Feed Row-Count Variance | Data Quality / Operations | Difference between observed feed row counts and published expected row counts for each expected partition. | Feed / partition date | Flag material positive/negative variance according to the configured tolerance; retain actual and expected counts. | Manifest; raw feed metadata | Data Engineering | Expected counts come from the ingestion manifest and may themselves be wrong or stale. |
-| KPI-012 | Order-to-POS Value Reconciliation | Finance / Reconciliation | Difference between governed order-header value and POS sales value for periods and dimensions where the source populations are explicitly comparable. | Period / source system / comparable business dimension | Do not force reconciliation across incompatible populations; show comparable and non-comparable populations separately. | ERP order headers; POS transactions; outlet master; fiscal calendar | Finance | POS and order-header feeds can represent different business events/populations. A non-zero difference is not automatically a data defect. |
+| KPI-009 | Order Value by Source System | Order / Finance | Monthly sum of `order_value_gross` grouped by `source_system`. | Month / Source System | Excludes NULL order values. | `silver.sales_orders` | Finance / Order Management | Current SQL does not explicitly deduplicate order headers. |
+| KPI-010 | Feed Data Completeness | Data Quality / Operations | Percentage of expected daily feed partitions with received data. | Month / Feed | Current template uses a hard-coded 2025-01-01 to 2026-06-30 expected range. | Intended: Bronze metadata + manifest | Data Engineering | **Template only:** `received_days` is currently hard-coded to 0. |
+| KPI-011 | Feed Row-Count Variance | Data Quality / Operations | Difference between expected and observed feed row counts. | Feed / Partition | Requires manifest and Bronze metadata. | Manifest + Bronze metadata | Data Engineering | **Not implemented in `gold.py`.** |
+| KPI-012 | Order-to-POS Value Reconciliation | Finance / Reconciliation | Monthly difference between total ERP order value and total POS sales value. | Month | Full outer join by month; missing side is currently converted to zero. | `silver.sales_orders` + `silver.transactions` | Finance | Diagnostic monthly comparison; does not prove comparable populations or transaction-level reconciliation. |
 
 ---
 
@@ -70,6 +70,25 @@ For other feeds, the pipeline should use the documented source/business key and 
 ### 3.4 Fiscal Periods
 
 All period-based KPIs should join to the supplied fiscal calendar. Queries should accept a date/fiscal-period parameter rather than hard-coding calendar periods.
+
+---
+
+## 4. Current Gold Tables
+
+The current `gold.py` materializes these Gold tables:
+
+1. `aistra_ayush.gold.kpi_001_gross_sales`
+2. `aistra_ayush.gold.kpi_002_sales_by_channel`
+3. `aistra_ayush.gold.kpi_003_units_sold_eaches`
+4. `aistra_ayush.gold.kpi_005_temp_excursion_rate`
+5. `aistra_ayush.gold.kpi_006_temp_excursion_by_carrier`
+6. `aistra_ayush.gold.kpi_007_cycle_time`
+7. `aistra_ayush.gold.kpi_008_channel_changes`
+8. `aistra_ayush.gold.kpi_009_order_value_by_system`
+9. `aistra_ayush.gold.kpi_012_order_pos_reconciliation`
+10. `aistra_ayush.gold.kpi_010_feed_completeness` — template only
+
+KPI-004 and KPI-011 are documented requirements but are not currently materialized by `gold.py`.
 
 ---
 
@@ -128,12 +147,11 @@ For reconciliation and audit use cases, retain the relevant source identifiers o
 
 ## 7. Implementation Priority
 
-**P0 — Must implement**
+**P0 — Implemented / core**
 
 - KPI-001 Gross Sales
 - KPI-002 Gross Sales by Channel
 - KPI-003 Units Sold (Eaches)
-- KPI-004 Finance Report Variance
 - KPI-005 Temperature Excursion Rate
 - KPI-006 Temperature Excursion Rate by Carrier
 - KPI-007 Median Dock-to-Dispatch Cycle Time
@@ -141,9 +159,9 @@ For reconciliation and audit use cases, retain the relevant source identifiers o
 - KPI-009 Order Value by Source System
 - KPI-010 Feed Data Completeness
 
-**P1 — Strong supporting controls**
+**P1 — Supporting / incomplete**
 
 - KPI-011 Feed Row-Count Variance
 - KPI-012 Order-to-POS Value Reconciliation
 
-The P1 metrics strengthen the “one set of numbers” objective and make the system easier to defend, but they should not expand into a generic enterprise data-quality framework for this assessment.
+The current `gold.py` contains 10 Gold table definitions. KPI-004 and KPI-011 are not materialized, while KPI-010 is a template rather than a completed feed-completeness calculation.
